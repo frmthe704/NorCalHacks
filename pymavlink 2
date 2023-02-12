@@ -1,0 +1,76 @@
+import dronekit
+from pymavlink import mavutil
+from time import sleep
+
+# Connect to the vehicle
+vehicle = dronekit.connect('/dev/ttyS0', baud=57600, wait_ready=True)
+
+# Check if vehicle is ready to fly
+while not vehicle.is_armable:
+    print("Waiting for vehicle to become armable...")
+    sleep(1)
+
+# Arm the vehicle
+print("Arming motors...")
+vehicle.mode = dronekit.VehicleMode("GUIDED")
+vehicle.armed = True
+
+while not vehicle.armed:
+    print("Waiting for vehicle to arm...")
+    sleep(1)
+
+# Take off to a height of 10 meters
+print("Taking off...")
+vehicle.simple_takeoff(10)
+
+# Fly to a specific location using GPS coordinates
+destination_latitude = 47.617739
+destination_longitude = -122.319456
+destination_altitude = 20
+location = dronekit.LocationGlobalRelative(destination_latitude, destination_longitude, destination_altitude)
+print("Flying to target location...")
+vehicle.simple_goto(location)
+
+# Set the speed to 5 m/s
+vehicle.airspeed = 5
+
+# Wait for the vehicle to reach the target location
+while vehicle.mode.name == "GUIDED":
+    remaining_distance = vehicle.location.global_relative_frame.distance_to(location)
+    print("Distance to target: ", remaining_distance)
+    if remaining_distance < 1:
+        print("Reached target location")
+        break
+    sleep(1)
+
+# Drop a payload
+print("Dropping payload...")
+msg = vehicle.message_factory.command_long_encode(
+    0, 0,  # target system, target component
+    mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # command
+    0,  # confirmation
+    6,  # servo number
+    1900,  # servo position
+    0, 0, 0, 0, 0)  # unused parameters
+vehicle.send_mavlink(msg)
+
+# Land the vehicle
+print("Landing...")
+vehicle.mode = dronekit.VehicleMode("LAND")
+
+# Wait for vehicle to land
+while not vehicle.mode.name == "STABILIZE":
+    print("Waiting for vehicle to land...")
+    sleep(1)
+
+# Disarm the vehicle
+print("Disarming motors...")
+vehicle.armed = False
+
+while vehicle.armed:
+    print("Waiting for vehicle to disarm...")
+    sleep(1)
+
+# Close the connection to the vehicle
+print("Closing vehicle connection...")
+vehicle.close()
